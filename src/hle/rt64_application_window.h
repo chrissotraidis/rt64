@@ -12,11 +12,17 @@
 #include "plume_apple.h"
 #endif
 
+#ifdef RT64_EMBEDDED_APPLE
+union SDL_Event;
+struct SDL_Window;
+using SDL_EventFilter = int (*)(void *, SDL_Event *);
+#else
 #include "SDL.h"
 #include "SDL_events.h"
 #include "SDL_system.h"
 #include "SDL_syswm.h"
 #include "SDL_video.h"
+#endif
 
 // Remove macros defined by x11 from a header included by SDL_syswm.h.
 #undef None

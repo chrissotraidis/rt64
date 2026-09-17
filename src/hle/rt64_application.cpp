@@ -588,6 +588,10 @@ namespace RT64 {
 #endif
 
     bool Application::sdlEventFilter(SDL_Event *event) {
+#ifdef RT64_EMBEDDED_APPLE
+        (void)event;
+        return false;
+#else
         if (userConfig.developerMode && (presentQueue != nullptr) && (state != nullptr) && !FileDialog::isOpen) {
             const std::lock_guard lock(presentQueue->inspectorMutex);
             if ((presentQueue->inspector != nullptr) && presentQueue->inspector->handleSdlEvent(event)) {
@@ -616,6 +620,7 @@ namespace RT64 {
         }
 
         return false;
+#endif
     }
 
     bool Application::usesWindowMessageFilter() {

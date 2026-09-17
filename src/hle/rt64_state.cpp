@@ -4,6 +4,7 @@
 
 #include "rt64_state.h"
 
+#include <atomic>
 #include <cassert>
 #include <cinttypes>
 
@@ -26,6 +27,37 @@
 
 #define MI_INTR_DP          0x00000020
 #define MI_INTR_SP          0x00000001
+
+#ifdef RT64_EMBEDDED_APPLE
+namespace {
+    std::atomic<uint64_t> depthFormatRebuilds = 0;
+    std::atomic<uint64_t> depthWidthChanges = 0;
+    std::atomic<uint64_t> depthSizeChanges = 0;
+    std::atomic<uint64_t> depthRdramChanges = 0;
+    std::atomic<uint32_t> depthLatestAddress = 0;
+}
+
+extern "C" __attribute__((visibility("default")))
+uint64_t goldenpad_rt64_depth_format_rebuild_stats(
+    uint64_t *widthChanges,
+    uint64_t *sizeChanges,
+    uint64_t *rdramChanges,
+    uint32_t *latestAddress) {
+    if (widthChanges != nullptr) {
+        *widthChanges = depthWidthChanges.load(std::memory_order_relaxed);
+    }
+    if (sizeChanges != nullptr) {
+        *sizeChanges = depthSizeChanges.load(std::memory_order_relaxed);
+    }
+    if (rdramChanges != nullptr) {
+        *rdramChanges = depthRdramChanges.load(std::memory_order_relaxed);
+    }
+    if (latestAddress != nullptr) {
+        *latestAddress = depthLatestAddress.load(std::memory_order_relaxed);
+    }
+    return depthFormatRebuilds.load(std::memory_order_relaxed);
+}
+#endif
 
 namespace RT64 {
     const float ShiftScaleMap[] = {
@@ -561,7 +593,19 @@ namespace RT64 {
                 }
 
                 depthFb = &framebufferManager.get(depthImg.address, G_IM_SIZ_16b, colorImg.width, colorHeight);
-                depthImg.formatChanged = depthFb->widthChanged || depthFb->sizChanged || depthFb->rdramChanged;
+                const bool depthWidthChanged = depthFb->widthChanged;
+                const bool depthSizeChanged = depthFb->sizChanged;
+                const bool depthRdramChanged = depthFb->rdramChanged;
+                depthImg.formatChanged = depthWidthChanged || depthSizeChanged || depthRdramChanged;
+#ifdef RT64_EMBEDDED_APPLE
+                if (depthImg.formatChanged) {
+                    depthFormatRebuilds.fetch_add(1, std::memory_order_relaxed);
+                    depthWidthChanges.fetch_add(depthWidthChanged ? 1 : 0, std::memory_order_relaxed);
+                    depthSizeChanges.fetch_add(depthSizeChanged ? 1 : 0, std::memory_order_relaxed);
+                    depthRdramChanges.fetch_add(depthRdramChanged ? 1 : 0, std::memory_order_relaxed);
+                    depthLatestAddress.store(depthImg.address, std::memory_order_relaxed);
+                }
+#endif
                 depthFb->clearChanged();
 
                 // Detect a fast path by checking if the framebuffer pair previous to the current one only did fill rects.
